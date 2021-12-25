@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use near_contract_standards::non_fungible_token::metadata::TokenMetadata;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{UnorderedMap, UnorderedSet, LookupMap};
-use near_sdk::{near_bindgen, PanicOnDefault, AccountId, BorshStorageKey};
+use near_sdk::{near_bindgen, PanicOnDefault, AccountId, BorshStorageKey, env};
 use near_contract_standards::non_fungible_token::{TokenId, Token};
 
 near_sdk::setup_alloc!();
@@ -31,9 +31,9 @@ pub enum StorageKeys{
     TokenByIDMap,
     PreviousOwnerOfTokenMap,
     TokensByContractMap,
-    TokensByContractMapSet,
+    TokensByContractMapSet { contract_hash: Vec<u8>  },
     TokensByOwnerMap,
-    TokensByOwnerMapSet
+    TokensByOwnerMapSet { account_hash: Vec<u8>  }
 }
 
 #[near_bindgen]
@@ -73,9 +73,34 @@ impl Oracle {
         self.previous_owner_of_token_map.get(&(self.get_token_input_key(nft_contract_id, token_id)))
     }
 
-    pub fn nft_token_for_contract(&self, nft_contract_id: AccountId, from_index: Option<u64>, _limit: Option<u64>) -> Vec<Token>{
-        let res: Vec<Token> = Vec::new();
-        res
+    pub fn nft_token_for_contract(&self, nft_contract_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
+        let mut tokens: Vec<Token> = Vec::new();
+
+        // let token_keys = match self.tokens_by_contract_map.get(&nft_contract_id) {
+        //     Some(v) => v,
+        //     None => return tokens
+        // };
+
+        // let values = token_keys.as_vector();
+        // for i in from_index..std::cmp::min(from_index + limit, values.len()){
+        //     let key = values.get(i).unwrap();
+
+        //     let token = self.
+
+
+        //     let token = Token{
+        //         owner_id: token_input.owner_id,
+        //         token_id: token_input.token_id,
+        //         metadata: token_input.metadata, 
+        //         approved_account_ids: token_input.approved_account_ids,
+        //     };
+            
+        //     tokens.push(token);
+        // }
+
+        // tokens
+
+        tokens
     }
 
     pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: Option<u64>, limit: Option<u64>) -> Vec<Token>{
@@ -112,15 +137,13 @@ impl Oracle {
             if let Some(mut tokens_map) = self.tokens_by_contract_map.get(&nft_contract_id){
                 tokens_map.insert(&nft_contract_id);
             } else {
-                // TODO update storage key
-                self.tokens_by_contract_map.insert(&(nft_contract_id.clone()), &(UnorderedSet::new(StorageKeys::TokensByContractMapSet)));
+                self.tokens_by_contract_map.insert(&(nft_contract_id.clone()), &(UnorderedSet::new(StorageKeys::TokensByContractMapSet{ contract_hash: env::sha256(nft_contract_id.as_bytes()) })));
             }
 
             if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&nft_contract_id){
                 tokens_map.insert(&token.owner_id);
             } else {
-                // TODO update storage key
-                self.tokens_by_owner_map.insert(&(nft_contract_id.clone()), &(UnorderedSet::new(StorageKeys::TokensByOwnerMapSet)));
+                self.tokens_by_owner_map.insert(&(nft_contract_id.clone()), &(UnorderedSet::new(StorageKeys::TokensByOwnerMapSet{ account_hash: env::sha256(token.owner_id.as_bytes())})));
             }
             
 
