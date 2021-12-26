@@ -37,18 +37,7 @@ pub enum StorageKeys{
     TokensByOwnerMapSet { account_hash: Vec<u8>  }
 }
 
-#[near_bindgen]
-impl Oracle {
-    #[init]
-    pub fn new() -> Self {
-        Self{
-            token_by_id_map: UnorderedMap::new(StorageKeys::TokenByIDMap),
-            previous_owner_of_token_map: LookupMap::new(StorageKeys::PreviousOwnerOfTokenMap),
-            tokens_by_contract_map: LookupMap::new(StorageKeys::TokensByContractMap),
-            tokens_by_owner_map: LookupMap::new(StorageKeys::TokensByOwnerMap)
-        }
-    }
-
+pub trait OracleInterface {
     // Get a list of all tokens
     //
     // Arguments:
@@ -58,18 +47,7 @@ impl Oracle {
     //
     // Returns an array of Token objects, as described in Core standard, and
     // an empty array if there are no tokens
-    pub fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{ 
-        let values = self.token_by_id_map.values_as_vector();
-        let (start_index, limit) = self.start_limit_paginate(from_index, limit);
-        values
-            .iter()
-            .skip(start_index as usize)
-            .take(limit)
-            .map(|token_input|{
-                self.parse_token_input_to_token(token_input)
-            })
-            .collect()
-    }
+    fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>;
 
     // Get the previous owner of an NFT
     //
@@ -79,9 +57,7 @@ impl Oracle {
     //
     // Returns a valid NEAR account that owned the token before, return null
     // otherwise
-    pub fn nft_previous_owner(&self, nft_contract_id: AccountId, token_id: TokenId) -> Option<String>{
-        self.previous_owner_of_token_map.get(&(self.get_token_input_key(nft_contract_id, token_id)))
-    }
+    fn nft_previous_owner(&self, nft_contract_id: AccountId, token_id: TokenId) -> Option<String>;
 
     // Get list of all tokens by a given smart contract account
     //
@@ -93,16 +69,7 @@ impl Oracle {
     //
     // Returns a paginated list of all tokens from the NFT smart contract,
     // and an empty array if there are no tokens
-    pub fn nft_token_for_contract(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
-        let nft_contract_id = account_id;
-        let tokens: Vec<Token> = Vec::new();
-        let token_keys = match self.tokens_by_contract_map.get(&nft_contract_id) {
-            Some(v) => v,
-            None => return tokens
-        };
-
-        self.get_tokens_by_values(token_keys, from_index, limit)
-    }
+    fn nft_token_for_contract(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>;
 
     // Get list of all tokens owned from multiple contracts by a given
     // account
@@ -115,15 +82,7 @@ impl Oracle {
     //
     // Returns a paginated list of all tokens owned by this account, and an
     // empty array if there are no tokens
-    pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
-        let tokens: Vec<Token> = Vec::new();
-        let token_keys = match self.tokens_by_owner_map.get(&account_id) {
-            Some(v) => v,
-            None => return tokens
-        };
-
-        self.get_tokens_by_values(token_keys, from_index, limit)
-    }
+    fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>;
 
     // Consume token from indexer
     //
@@ -132,7 +91,63 @@ impl Oracle {
     // * `tokens`: array of object token, limited by gas fee 
     //
     //  Return empty if succeded
-    pub fn consume_tokens(&mut self, nft_contract_id: AccountId, tokens: Vec<Token>){
+    fn consume_tokens(&mut self, nft_contract_id: AccountId, tokens: Vec<Token>);
+}
+
+#[near_bindgen]
+impl Oracle {
+    #[init]
+    pub fn new() -> Self {
+        Self{
+            token_by_id_map: UnorderedMap::new(StorageKeys::TokenByIDMap),
+            previous_owner_of_token_map: LookupMap::new(StorageKeys::PreviousOwnerOfTokenMap),
+            tokens_by_contract_map: LookupMap::new(StorageKeys::TokensByContractMap),
+            tokens_by_owner_map: LookupMap::new(StorageKeys::TokensByOwnerMap)
+        }
+    }
+}
+
+#[near_bindgen]
+impl OracleInterface for Oracle{
+    fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{ 
+        let values = self.token_by_id_map.values_as_vector();
+        let (start_index, limit) = self.start_limit_paginate(from_index, limit);
+        values
+            .iter()
+            .skip(start_index as usize)
+            .take(limit)
+            .map(|token_input|{
+                self.parse_token_input_to_token(token_input)
+            })
+            .collect()
+    }
+
+    fn nft_previous_owner(&self, nft_contract_id: AccountId, token_id: TokenId) -> Option<String>{
+        self.previous_owner_of_token_map.get(&(self.get_token_input_key(nft_contract_id, token_id)))
+    }
+
+    fn nft_token_for_contract(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
+        let nft_contract_id = account_id;
+        let tokens: Vec<Token> = Vec::new();
+        let token_keys = match self.tokens_by_contract_map.get(&nft_contract_id) {
+            Some(v) => v,
+            None => return tokens
+        };
+
+        self.get_tokens_by_values(token_keys, from_index, limit)
+    }
+
+    fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
+        let tokens: Vec<Token> = Vec::new();
+        let token_keys = match self.tokens_by_owner_map.get(&account_id) {
+            Some(v) => v,
+            None => return tokens
+        };
+
+        self.get_tokens_by_values(token_keys, from_index, limit)
+    }
+    
+    fn consume_tokens(&mut self, nft_contract_id: AccountId, tokens: Vec<Token>){
         if tokens.len() == 0{
             return;
         }
@@ -201,13 +216,13 @@ impl Oracle {
 
 // private function outside near_bindgen
 impl Oracle{
-    pub fn get_token_input_key(&self, nft_contract_id: AccountId, token_id: TokenId) -> String{
+    fn get_token_input_key(&self, nft_contract_id: AccountId, token_id: TokenId) -> String{
         let key_prefix = token_id;
         let key_suffix = nft_contract_id;
         key_prefix + ":" +&key_suffix
     }
 
-    pub fn get_tokens_by_values(&self, token_keys: UnorderedSet<String>, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
+    fn get_tokens_by_values(&self, token_keys: UnorderedSet<String>, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
         let (start_index, limit) = self.start_limit_paginate(from_index, limit);
 
         let values = token_keys.as_vector();
@@ -222,7 +237,7 @@ impl Oracle{
             .collect()
     }
 
-    pub fn parse_token_input_to_token(&self, token_input: TokenInput) -> Token{
+    fn parse_token_input_to_token(&self, token_input: TokenInput) -> Token{
         Token{
             owner_id: token_input.owner_id,
             token_id: token_input.token_id,
@@ -231,7 +246,7 @@ impl Oracle{
         }
     }
 
-    pub fn start_limit_paginate(&self, from_index: Option<U128>, limit: Option<u64>) -> (u128, usize){
+    fn start_limit_paginate(&self, from_index: Option<U128>, limit: Option<u64>) -> (u128, usize){
         let start_index: u128 = from_index.map(From::from).unwrap_or_default();
         let limit = limit.map(|v| v as usize).unwrap_or(usize::MAX);
         (start_index, limit)
