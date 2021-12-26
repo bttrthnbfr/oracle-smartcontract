@@ -81,15 +81,8 @@ impl Oracle {
         };
 
         let values = token_keys.as_vector();
-        for v in values.iter(){
-            env::log(v.as_bytes());
-        };
-
         for i in from_index..std::cmp::min(from_index + limit, values.len()){
             let key = values.get(i).unwrap();
-
-            env::log(key.as_bytes());
-
             match self.token_by_id_map.get(&key) {
                 Some(token_input) => {
                     let token = Token{
@@ -109,8 +102,31 @@ impl Oracle {
     }
 
     pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
-        let res: Vec<Token> = Vec::new();
-        res
+        let mut tokens: Vec<Token> = Vec::new();
+        let token_keys = match self.tokens_by_owner_map.get(&account_id) {
+            Some(v) => v,
+            None => return tokens
+        };
+
+        let values = token_keys.as_vector();
+        for i in from_index..std::cmp::min(from_index + limit, values.len()){
+            let key = values.get(i).unwrap();
+            match self.token_by_id_map.get(&key) {
+                Some(token_input) => {
+                    let token = Token{
+                        owner_id: token_input.owner_id,
+                        token_id: token_input.token_id,
+                        metadata: token_input.metadata, 
+                        approved_account_ids: token_input.approved_account_ids,
+                    };
+                    
+                    tokens.push(token);
+                },
+                None => ()
+            }
+        }
+
+        tokens
     }
 
     pub fn consume_tokens(&mut self, nft_contract_id: AccountId, tokens: Vec<Token>){
@@ -137,10 +153,10 @@ impl Oracle {
                     self.previous_owner_of_token_map.insert(&key, &previous_token.owner_id);
 
                     // delete previous token by owner if the owner changed
-                    if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
-                        tokens_map.remove(&key);
-                        self.tokens_by_owner_map.insert(&(previous_token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
-                    }
+                    // if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
+                    //     tokens_map.remove(&key);
+                    //     self.tokens_by_owner_map.insert(&(previous_token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
+                    // }
                 } else {
 
                     // iterate to the next loop if the data exist and owner_id not changed
