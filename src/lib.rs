@@ -75,30 +75,35 @@ impl Oracle {
 
     pub fn nft_token_for_contract(&self, nft_contract_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
         let mut tokens: Vec<Token> = Vec::new();
+        let token_keys = match self.tokens_by_contract_map.get(&nft_contract_id) {
+            Some(v) => v,
+            None => return tokens
+        };
 
-        // let token_keys = match self.tokens_by_contract_map.get(&nft_contract_id) {
-        //     Some(v) => v,
-        //     None => return tokens
-        // };
+        let values = token_keys.as_vector();
+        for v in values.iter(){
+            env::log(v.as_bytes());
+        };
 
-        // let values = token_keys.as_vector();
-        // for i in from_index..std::cmp::min(from_index + limit, values.len()){
-        //     let key = values.get(i).unwrap();
+        for i in from_index..std::cmp::min(from_index + limit, values.len()){
+            let key = values.get(i).unwrap();
 
-        //     let token = self.
+            env::log(key.as_bytes());
 
-
-        //     let token = Token{
-        //         owner_id: token_input.owner_id,
-        //         token_id: token_input.token_id,
-        //         metadata: token_input.metadata, 
-        //         approved_account_ids: token_input.approved_account_ids,
-        //     };
-            
-        //     tokens.push(token);
-        // }
-
-        // tokens
+            match self.token_by_id_map.get(&key) {
+                Some(token_input) => {
+                    let token = Token{
+                        owner_id: token_input.owner_id,
+                        token_id: token_input.token_id,
+                        metadata: token_input.metadata, 
+                        approved_account_ids: token_input.approved_account_ids,
+                    };
+                    
+                    tokens.push(token);
+                },
+                None => ()
+            }
+        }
 
         tokens
     }
@@ -134,6 +139,7 @@ impl Oracle {
                     // delete previous token by owner if the owner changed
                     if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
                         tokens_map.remove(&key);
+                        self.tokens_by_owner_map.insert(&(previous_token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
                     }
                 } else {
 
@@ -149,6 +155,7 @@ impl Oracle {
             match self.tokens_by_contract_map.get(&nft_contract_id){
                 Some(mut tokens_map) => {
                     tokens_map.insert(&key);
+                    self.tokens_by_contract_map.insert(&(nft_contract_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
                 },
                 None => {
                     let mut set = UnorderedSet::new(StorageKeys::TokensByContractMapSet{ contract_hash: env::sha256(nft_contract_id.as_bytes()) });
@@ -161,6 +168,7 @@ impl Oracle {
             match self.tokens_by_owner_map.get(&token.owner_id){
                 Some(mut tokens_map) => {
                     tokens_map.insert(&key);
+                    self.tokens_by_owner_map.insert(&(token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
                 },
                 None => {
                     let mut set = UnorderedSet::new(StorageKeys::TokensByOwnerMapSet{ account_hash: env::sha256(token.owner_id.as_bytes()) });
