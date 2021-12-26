@@ -153,10 +153,10 @@ impl Oracle {
                     self.previous_owner_of_token_map.insert(&key, &previous_token.owner_id);
 
                     // delete previous token by owner if the owner changed
-                    // if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
-                    //     tokens_map.remove(&key);
-                    //     self.tokens_by_owner_map.insert(&(previous_token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
-                    // }
+                    if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
+                        tokens_map.remove(&key);
+                        self.tokens_by_owner_map.insert(&(previous_token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
+                    }
                 } else {
 
                     // iterate to the next loop if the data exist and owner_id not changed
