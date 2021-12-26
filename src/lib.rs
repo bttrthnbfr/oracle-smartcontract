@@ -103,7 +103,7 @@ impl Oracle {
         tokens
     }
 
-    pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: Option<u64>, limit: Option<u64>) -> Vec<Token>{
+    pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
         let res: Vec<Token> = Vec::new();
         res
     }
@@ -116,6 +116,7 @@ impl Oracle {
         for v in &tokens{
             let token =  v.clone();
 
+            // parse token_input to standart token struct
             let token_input = TokenInput{
                 owner_id: token.owner_id.clone(),
                 token_id: token.token_id.clone(),
@@ -129,25 +130,44 @@ impl Oracle {
             if let Some(previous_token) = self.token_by_id_map.get(&key){
                 if token.owner_id != previous_token.owner_id{
                     self.previous_owner_of_token_map.insert(&key, &previous_token.owner_id);
+
+                    // delete previous token by owner if the owner changed
+                    if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
+                        tokens_map.remove(&key);
+                    }
                 } else {
+
+                    // iterate to the next loop if the data exist and owner_id not changed
                     continue;
                 }
             }
 
-            if let Some(mut tokens_map) = self.tokens_by_contract_map.get(&nft_contract_id){
-                tokens_map.insert(&nft_contract_id);
-            } else {
-                self.tokens_by_contract_map.insert(&(nft_contract_id.clone()), &(UnorderedSet::new(StorageKeys::TokensByContractMapSet{ contract_hash: env::sha256(nft_contract_id.as_bytes()) })));
-            }
-
-            if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&nft_contract_id){
-                tokens_map.insert(&token.owner_id);
-            } else {
-                self.tokens_by_owner_map.insert(&(nft_contract_id.clone()), &(UnorderedSet::new(StorageKeys::TokensByOwnerMapSet{ account_hash: env::sha256(token.owner_id.as_bytes())})));
-            }
-            
-
+            // insert token_input to storage
             self.token_by_id_map.insert(&key, &token_input);
+
+            // map tokens by contract storage
+            match self.tokens_by_contract_map.get(&nft_contract_id){
+                Some(mut tokens_map) => {
+                    tokens_map.insert(&key);
+                },
+                None => {
+                    let mut set = UnorderedSet::new(StorageKeys::TokensByContractMapSet{ contract_hash: env::sha256(nft_contract_id.as_bytes()) });
+                    set.insert(&key);
+                    self.tokens_by_contract_map.insert(&(nft_contract_id.clone()), &set);
+                }
+            };
+
+            // map tokens by owner storage
+            match self.tokens_by_owner_map.get(&token.owner_id){
+                Some(mut tokens_map) => {
+                    tokens_map.insert(&key);
+                },
+                None => {
+                    let mut set = UnorderedSet::new(StorageKeys::TokensByOwnerMapSet{ account_hash: env::sha256(token.owner_id.as_bytes()) });
+                    set.insert(&key);
+                    self.tokens_by_owner_map.insert(&(token.owner_id.clone()), &set);
+                }
+            };
         }
     }
 }
