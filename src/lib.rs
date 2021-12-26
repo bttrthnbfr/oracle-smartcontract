@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use near_contract_standards::non_fungible_token::metadata::TokenMetadata;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{UnorderedMap, UnorderedSet, LookupMap};
+use near_sdk::json_types::{U128};
 use near_sdk::{near_bindgen, PanicOnDefault, AccountId, BorshStorageKey, env};
 use near_contract_standards::non_fungible_token::{TokenId, Token};
 
@@ -48,42 +49,89 @@ impl Oracle {
         }
     }
 
-    // TODO unlimited LIMIT
-    pub fn nft_tokens(&self, from_index: u64, limit: u64) -> Vec<Token>{
-        // pagination tutorial as mention in this doc: https://www.near-sdk.io/contract-structure/collections#pagination-with-persistent-collections
+    // Get a list of all tokens
+    //
+    // Arguments:
+    // * `from_index`: a string representing an unsigned 128-bit integer,
+    // representing the starting index of tokens to return
+    // * `limit`: the maximum number of tokens to return
+    //
+    // Returns an array of Token objects, as described in Core standard, and
+    // an empty array if there are no tokens
+    pub fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{ 
         let values = self.token_by_id_map.values_as_vector();
-        let mut tokens: Vec<Token> = Vec::new();
-        for i in from_index..std::cmp::min(from_index + limit, self.token_by_id_map.len()){
-            tokens.push(self.parse_token_input_to_token(values.get(i).unwrap()));
-        }
-
-        tokens
+        let (start_index, limit) = self.start_limit_paginate(from_index, limit);
+        values
+            .iter()
+            .skip(start_index as usize)
+            .take(limit)
+            .map(|token_input|{
+                self.parse_token_input_to_token(token_input)
+            })
+            .collect()
     }
 
+    // Get the previous owner of an NFT
+    //
+    // Arguments:
+    // * `nft_contract_id`: a valid NEAR account (NFT smart contract)
+    // * `token_id`: a string representing the token_id
+    //
+    // Returns a valid NEAR account that owned the token before, return null
+    // otherwise
     pub fn nft_previous_owner(&self, nft_contract_id: AccountId, token_id: TokenId) -> Option<String>{
         self.previous_owner_of_token_map.get(&(self.get_token_input_key(nft_contract_id, token_id)))
     }
 
-    pub fn nft_token_for_contract(&self, nft_contract_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
+    // Get list of all tokens by a given smart contract account
+    //
+    // Arguments:
+    // * `account_id`: a valid NEAR account (an NFT smart contract)
+    // * `from_index`: a string representing an unsigned 128-bit integer,
+    // representing the starting index of tokens to return
+    // * `limit`: the maximum number of tokens to return
+    //
+    // Returns a paginated list of all tokens from the NFT smart contract,
+    // and an empty array if there are no tokens
+    pub fn nft_token_for_contract(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
+        let nft_contract_id = account_id;
         let tokens: Vec<Token> = Vec::new();
         let token_keys = match self.tokens_by_contract_map.get(&nft_contract_id) {
             Some(v) => v,
             None => return tokens
         };
 
-        self.get_tokens_by_values(tokens, token_keys, from_index, limit)
+        self.get_tokens_by_values(token_keys, from_index, limit)
     }
 
-    pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
+    // Get list of all tokens owned from multiple contracts by a given
+    // account
+    //
+    // Arguments:
+    // * `account_id`: a valid NEAR account
+    // * `from_index`: a string representing an unsigned 128-bit integer,
+    // representing the starting index of tokens to return
+    // * `limit`: the maximum number of tokens to return
+    //
+    // Returns a paginated list of all tokens owned by this account, and an
+    // empty array if there are no tokens
+    pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
         let tokens: Vec<Token> = Vec::new();
         let token_keys = match self.tokens_by_owner_map.get(&account_id) {
             Some(v) => v,
             None => return tokens
         };
 
-        self.get_tokens_by_values(tokens, token_keys, from_index, limit)
+        self.get_tokens_by_values(token_keys, from_index, limit)
     }
 
+    // Consume token from indexer
+    //
+    // Arguments:
+    // * `nft_contract_id`: a valid NEAR account
+    // * `tokens`: array of object token, limited by gas fee 
+    //
+    //  Return empty if succeded
     pub fn consume_tokens(&mut self, nft_contract_id: AccountId, tokens: Vec<Token>){
         if tokens.len() == 0{
             return;
@@ -159,18 +207,19 @@ impl Oracle{
         key_prefix + ":" +&key_suffix
     }
 
-    pub fn get_tokens_by_values(&self, mut tokens: Vec<Token>, token_keys: UnorderedSet<String>, from_index: u64, limit: u64) -> Vec<Token>{
+    pub fn get_tokens_by_values(&self, token_keys: UnorderedSet<String>, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{
+        let (start_index, limit) = self.start_limit_paginate(from_index, limit);
+
         let values = token_keys.as_vector();
-        for i in from_index..std::cmp::min(from_index + limit, values.len()){
-            let key = values.get(i).unwrap();
-            match self.token_by_id_map.get(&key) {
-                Some(token_input) => {
-                    tokens.push(self.parse_token_input_to_token(token_input));
-                },
-                None => ()
-            }
-        }
-        tokens
+        values
+            .iter()
+            .skip(start_index as usize)
+            .take(limit)
+            .map(|key| {
+                let token_input = self.token_by_id_map.get(&key).unwrap();
+                self.parse_token_input_to_token(token_input)
+            })
+            .collect()
     }
 
     pub fn parse_token_input_to_token(&self, token_input: TokenInput) -> Token{
@@ -180,5 +229,11 @@ impl Oracle{
             metadata: token_input.metadata, 
             approved_account_ids: token_input.approved_account_ids,
         }
+    }
+
+    pub fn start_limit_paginate(&self, from_index: Option<U128>, limit: Option<u64>) -> (u128, usize){
+        let start_index: u128 = from_index.map(From::from).unwrap_or_default();
+        let limit = limit.map(|v| v as usize).unwrap_or(usize::MAX);
+        (start_index, limit)
     }
 }
