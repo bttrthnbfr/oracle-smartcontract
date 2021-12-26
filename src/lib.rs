@@ -92,6 +92,16 @@ pub trait OracleInterface {
     //
     //  Return empty if succeded
     fn consume_tokens(&mut self, nft_contract_id: AccountId, tokens: Vec<Token>);
+
+    // Update owner of token
+    //
+    // Arguments:
+    // * `nft_contract_id`: a valid NEAR account
+    // * `token_id`: a string representing the token_id
+    // * `owner_id`: a valid NEAR account
+    //
+    //  Return empty if succeded
+    fn nft_update_owner_of_token(&mut self, nft_contract_id: AccountId, token_id: TokenId, owner_id: AccountId);
 }
 
 #[near_bindgen]
@@ -107,7 +117,7 @@ impl Oracle {
     }
 }
 
-#[near_bindgen]
+// #[near_bindgen]
 impl OracleInterface for Oracle{
     fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{ 
         let values = self.token_by_id_map.values_as_vector();
@@ -166,20 +176,9 @@ impl OracleInterface for Oracle{
             let key = self.get_token_input_key(nft_contract_id.clone(), token.token_id.clone());
 
             // set previous owner if current input (owner_id) is different from previous token data
-            if let Some(previous_token) = self.token_by_id_map.get(&key){
-                if token.owner_id != previous_token.owner_id{
-                    self.previous_owner_of_token_map.insert(&key, &previous_token.owner_id);
-
-                    // delete previous token by owner if the owner changed
-                    if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
-                        tokens_map.remove(&key);
-                        self.tokens_by_owner_map.insert(&(previous_token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
-                    }
-                } else {
-
-                    // iterate to the next loop if the data exist and owner_id not changed
-                    continue;
-                }
+            // skip when previous owner == current owner input
+            if !(self.update_owner_of_token(&token_input.owner_id, &key)){
+                continue;
             }
 
             // insert token_input to storage
@@ -212,10 +211,34 @@ impl OracleInterface for Oracle{
             };
         }
     }
+
+    fn nft_update_owner_of_token(&mut self, nft_contract_id: AccountId, token_id: TokenId, owner_id: AccountId){
+        let key = self.get_token_input_key(nft_contract_id, token_id);
+        self.update_owner_of_token(&owner_id, &key);
+    }
 }
 
 // private function outside near_bindgen
 impl Oracle{
+    fn update_owner_of_token(&mut self, owner_id: &AccountId, key: &String) -> bool{
+        if let Some(token_input) = self.token_by_id_map.get(&key){
+            if token_input.owner_id != *owner_id{
+                self.previous_owner_of_token_map.insert(&key, &token_input.owner_id);
+    
+                // delete previous token by owner if the owner changed
+                if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&token_input.owner_id){
+                    tokens_map.remove(&key);
+                    self.tokens_by_owner_map.insert(&(token_input.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
+                }
+                return true
+
+            } else {
+                return false
+            }
+        }
+        return false
+    }
+
     fn get_token_input_key(&self, nft_contract_id: AccountId, token_id: TokenId) -> String{
         let key_prefix = token_id;
         let key_suffix = nft_contract_id;
