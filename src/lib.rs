@@ -54,16 +54,7 @@ impl Oracle {
         let values = self.token_by_id_map.values_as_vector();
         let mut tokens: Vec<Token> = Vec::new();
         for i in from_index..std::cmp::min(from_index + limit, self.token_by_id_map.len()){
-            let token_input = values.get(i).unwrap();
-
-            let token = Token{
-                owner_id: token_input.owner_id,
-                token_id: token_input.token_id,
-                metadata: token_input.metadata, 
-                approved_account_ids: token_input.approved_account_ids,
-            };
-            
-            tokens.push(token);
+            tokens.push(self.parse_token_input_to_token(values.get(i).unwrap()));
         }
 
         tokens
@@ -74,59 +65,23 @@ impl Oracle {
     }
 
     pub fn nft_token_for_contract(&self, nft_contract_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
-        let mut tokens: Vec<Token> = Vec::new();
+        let tokens: Vec<Token> = Vec::new();
         let token_keys = match self.tokens_by_contract_map.get(&nft_contract_id) {
             Some(v) => v,
             None => return tokens
         };
 
-        let values = token_keys.as_vector();
-        for i in from_index..std::cmp::min(from_index + limit, values.len()){
-            let key = values.get(i).unwrap();
-            match self.token_by_id_map.get(&key) {
-                Some(token_input) => {
-                    let token = Token{
-                        owner_id: token_input.owner_id,
-                        token_id: token_input.token_id,
-                        metadata: token_input.metadata, 
-                        approved_account_ids: token_input.approved_account_ids,
-                    };
-                    
-                    tokens.push(token);
-                },
-                None => ()
-            }
-        }
-
-        tokens
+        self.get_tokens_by_values(tokens, token_keys, from_index, limit)
     }
 
     pub fn nft_tokens_for_owner(&self, account_id: AccountId, from_index: u64, limit: u64) -> Vec<Token>{
-        let mut tokens: Vec<Token> = Vec::new();
+        let tokens: Vec<Token> = Vec::new();
         let token_keys = match self.tokens_by_owner_map.get(&account_id) {
             Some(v) => v,
             None => return tokens
         };
 
-        let values = token_keys.as_vector();
-        for i in from_index..std::cmp::min(from_index + limit, values.len()){
-            let key = values.get(i).unwrap();
-            match self.token_by_id_map.get(&key) {
-                Some(token_input) => {
-                    let token = Token{
-                        owner_id: token_input.owner_id,
-                        token_id: token_input.token_id,
-                        metadata: token_input.metadata, 
-                        approved_account_ids: token_input.approved_account_ids,
-                    };
-                    
-                    tokens.push(token);
-                },
-                None => ()
-            }
-        }
-
-        tokens
+        self.get_tokens_by_values(tokens, token_keys, from_index, limit)
     }
 
     pub fn consume_tokens(&mut self, nft_contract_id: AccountId, tokens: Vec<Token>){
@@ -202,5 +157,28 @@ impl Oracle{
         let key_prefix = token_id;
         let key_suffix = nft_contract_id;
         key_prefix + ":" +&key_suffix
+    }
+
+    pub fn get_tokens_by_values(&self, mut tokens: Vec<Token>, token_keys: UnorderedSet<String>, from_index: u64, limit: u64) -> Vec<Token>{
+        let values = token_keys.as_vector();
+        for i in from_index..std::cmp::min(from_index + limit, values.len()){
+            let key = values.get(i).unwrap();
+            match self.token_by_id_map.get(&key) {
+                Some(token_input) => {
+                    tokens.push(self.parse_token_input_to_token(token_input));
+                },
+                None => ()
+            }
+        }
+        tokens
+    }
+
+    pub fn parse_token_input_to_token(&self, token_input: TokenInput) -> Token{
+        Token{
+            owner_id: token_input.owner_id,
+            token_id: token_input.token_id,
+            metadata: token_input.metadata, 
+            approved_account_ids: token_input.approved_account_ids,
+        }
     }
 }
