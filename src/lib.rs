@@ -177,8 +177,10 @@ impl OracleInterface for Oracle{
 
             // set previous owner if current input (owner_id) is different from previous token data
             // skip when previous owner == current owner input
-            if !(self.update_owner_of_token(&token_input.owner_id, &key)){
-                continue;
+            if let Some(previous_token) = self.token_by_id_map.get(&key){
+                if !(self.update_owner_of_token(&token_input.owner_id, &key, &previous_token)){
+                    continue;
+                }
             }
 
             // insert token_input to storage
@@ -198,45 +200,54 @@ impl OracleInterface for Oracle{
             };
 
             // map tokens by owner storage
-            match self.tokens_by_owner_map.get(&token.owner_id){
-                Some(mut tokens_map) => {
-                    tokens_map.insert(&key);
-                    self.tokens_by_owner_map.insert(&(token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
-                },
-                None => {
-                    let mut set = UnorderedSet::new(StorageKeys::TokensByOwnerMapSet{ account_hash: env::sha256(token.owner_id.as_bytes()) });
-                    set.insert(&key);
-                    self.tokens_by_owner_map.insert(&(token.owner_id.clone()), &set);
-                }
-            };
+            self.map_token_by_owner(&key, &token.owner_id);
         }
     }
 
     fn nft_update_owner_of_token(&mut self, nft_contract_id: AccountId, token_id: TokenId, owner_id: AccountId){
         let key = self.get_token_input_key(nft_contract_id, token_id);
-        self.update_owner_of_token(&owner_id, &key);
+        if let Some(mut previous_token) = self.token_by_id_map.get(&key){
+            if !(self.update_owner_of_token(&owner_id, &key, &previous_token)){
+                return
+            }
+            previous_token.owner_id = owner_id.clone();
+
+            self.token_by_id_map.insert(&key, &previous_token);
+            self.map_token_by_owner(&key, &owner_id)
+        }
     }
 }
 
 // private function outside near_bindgen
 impl Oracle{
-    fn update_owner_of_token(&mut self, owner_id: &AccountId, key: &String) -> bool{
-        if let Some(token_input) = self.token_by_id_map.get(&key){
-            if token_input.owner_id != *owner_id{
-                self.previous_owner_of_token_map.insert(&key, &token_input.owner_id);
-    
-                // delete previous token by owner if the owner changed
-                if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&token_input.owner_id){
-                    tokens_map.remove(&key);
-                    self.tokens_by_owner_map.insert(&(token_input.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
-                }
-                return true
-
-            } else {
-                return false
+    fn map_token_by_owner(&mut self, key: &String, owner_id: &String){
+        match self.tokens_by_owner_map.get(owner_id){
+            Some(mut tokens_map) => {
+                tokens_map.insert(key);
+                self.tokens_by_owner_map.insert(owner_id, &tokens_map); // i think this is uneficient, TODO More research
+            },
+            None => {
+                let mut set = UnorderedSet::new(StorageKeys::TokensByOwnerMapSet{ account_hash: env::sha256((*owner_id).as_bytes()) });
+                set.insert(key);
+                self.tokens_by_owner_map.insert(owner_id, &set);
             }
+        };
+    }
+
+    fn update_owner_of_token(&mut self, owner_id: &AccountId, key: &String, previous_token: &TokenInput) -> bool{
+        if previous_token.owner_id != *owner_id{
+            self.previous_owner_of_token_map.insert(&key, &previous_token.owner_id);
+
+            // delete previous token by owner if the owner changed
+            if let Some(mut tokens_map) = self.tokens_by_owner_map.get(&previous_token.owner_id){
+                tokens_map.remove(&key);
+                self.tokens_by_owner_map.insert(&(previous_token.owner_id.clone()), &tokens_map); // i think this is uneficient, TODO More research
+            }
+            return true
+
+        } else {
+            return false
         }
-        return false
     }
 
     fn get_token_input_key(&self, nft_contract_id: AccountId, token_id: TokenId) -> String{
