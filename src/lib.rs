@@ -117,7 +117,7 @@ impl Oracle {
     }
 }
 
-// #[near_bindgen]
+#[near_bindgen]
 impl OracleInterface for Oracle{
     fn nft_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<Token>{ 
         let values = self.token_by_id_map.values_as_vector();
