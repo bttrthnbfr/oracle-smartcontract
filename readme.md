@@ -1,6 +1,6 @@
 ORACLE-SMARTCONTRACT
 ===================
-This contract is used to collect NFT from several source and map based on `contract_id`, `owner`, and get `previous_owner` of specific token.
+This contract is used to collect NFT from [nft-indexer](https://github.com/haffjjj/nft-indexer) and map based on `contract_id`, `owner`, and get `previous_owner` of specific token.
 
 
 Building this contract
